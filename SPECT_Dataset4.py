@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 import numpy as np
+import random
 
 
 def read_float32_binary(file_name):
@@ -12,14 +13,12 @@ def read_float32_binary(file_name):
 
 
 class SPECT_Dataset4(Dataset):
-    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, expansion, normalize_input, normalize_label):
+    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, normalize_input, normalize_label):
         self.input_prefix = input_prefix
         self.input_suffix = input_suffix
         self.label_prefix = label_prefix
         self.label_suffix = label_suffix
         self.num_sets = num_sets
-        self.expansion = expansion
-        assert 120 % expansion == 0, "Invalid expansion factor"
         self.normalize_input = normalize_input
         self.normalize_label = normalize_label
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,36 +42,37 @@ class SPECT_Dataset4(Dataset):
             self.the_data.append( (input_data, label_data) )
 
     def __len__(self):
-        return self.num_sets * self.expansion
+        return self.num_sets
 
-    def __getitem__(self, idx_in):
-        if idx_in < self.num_sets:
-            return self.the_data[idx_in]
-        else:
-            step = 120 // self.expansion
-            roll_index = idx_in // self.num_sets
-            assert 1 <= roll_index < self.expansion
-            roll_amount = roll_index * step
-            assert 1 <= roll_amount < 120
+    def __getitem__(self, idx):
+        # the amount to roll the sinogram
+        roll_amount = random.randint(0, 119)
+        assert 0 <= roll_amount < 120
 
-            # get the data
-            x, y = self.the_data[idx_in % self.num_sets]
+        # get the data
+        x, y = self.the_data[idx]
 
-            # Make a copy of the original x tensor
-            rolled_x = x.clone().squeeze()
+        # get a scale factor for the activity
+        scale_factor = random.uniform(0.5, 3.0)
 
-            # Specify the portion of the tensor you want to roll
-            slice_indices = (slice(68,188), slice(0, 255))
+        # Make a copy of the original x tensor
+        rolled_x = x.clone().squeeze()
 
-            # Extract the portion of the tensor to roll
-            portion_to_roll = rolled_x[slice_indices]
+        # Specify the portion of the tensor you want to roll
+        slice_indices = (slice(68, 188), slice(0, 255))
 
-            # Roll the portion along the first dimension by 1 position
-            rolled_portion = torch.roll(portion_to_roll, shifts=roll_amount, dims=0)
+        # Extract the portion of the tensor to roll
+        portion_to_roll = rolled_x[slice_indices]
 
-            # Replace the rolled portion in the copied tensor
-            rolled_x[slice_indices] = rolled_portion
+        # Roll the portion along the first dimension by 1 position
+        rolled_portion = torch.roll(portion_to_roll, shifts=roll_amount, dims=0)
 
-            # return result
-            return rolled_x.unsqueeze(0), y
+        # Replace the rolled portion in the copied tensor
+        rolled_x[slice_indices] = rolled_portion
+
+        # generate Poisson noise
+        #poisson_scale = 180_000 * scale_factor
+
+        # return result
+        return torch.poisson(scale_factor * rolled_x.unsqueeze(0)), scale_factor * y
 

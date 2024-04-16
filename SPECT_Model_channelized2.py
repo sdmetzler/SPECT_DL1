@@ -4,7 +4,7 @@ import torch.nn.init as init
 import ChannelizedImage
 from PatRecon import net
 import gc
-import time
+#import time
 
 
 # Define the model class
@@ -235,7 +235,7 @@ class SPECT_Model_channelized2(nn.Module):
         ### output
         result = deconv1
         if self.channelized:
-            start_time = time.time()
+            #start_time = time.time()
             # extract the lowest-level of the result
             result_c = torch.zeros(num_channels, 256, 256, device=result.device)
 
@@ -322,10 +322,10 @@ class SPECT_Model_channelized2(nn.Module):
                                                                  0:size_i]
 
             # need to de-channelize and get an extra dimension
-            mid_time = time.time()
+            #mid_time = time.time()
             result = ChannelizedImage.dechannelize(result_c).unsqueeze(1)
-            end_time = time.time()
-            print(f"Channelize time: {mid_time-start_time}; {end_time-start_time}")
+            #end_time = time.time()
+            #print(f"Channelize time: {mid_time-start_time}; {end_time-start_time}")
 
         # return result
         return result

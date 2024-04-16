@@ -13,7 +13,8 @@ def read_float32_binary(file_name):
 
 
 class SPECT_Dataset4(Dataset):
-    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, normalize_input, normalize_label):
+    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, normalize_input, normalize_label,
+                 add_noise):
         self.input_prefix = input_prefix
         self.input_suffix = input_suffix
         self.label_prefix = label_prefix
@@ -21,6 +22,7 @@ class SPECT_Dataset4(Dataset):
         self.num_sets = num_sets
         self.normalize_input = normalize_input
         self.normalize_label = normalize_label
+        self.add_noise = add_noise
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.the_data = []
         for idx in range(num_sets):
@@ -38,22 +40,27 @@ class SPECT_Dataset4(Dataset):
             padded_image = np.pad(label_data.reshape(250, 250), ((3, 3), (3, 3)), mode='constant')
             label_data = torch.tensor(padded_image, device=self.device).view(1, 256, 256)
 
+            # normalize as needed
+            if self.normalize_input:
+                input_data /= torch.max(input_data)
+
+            if self.normalize_label:
+                label_data /= torch.max(label_data)
+
             # save it
             self.the_data.append( (input_data, label_data) )
+
 
     def __len__(self):
         return self.num_sets
 
     def __getitem__(self, idx):
         # the amount to roll the sinogram
-        roll_amount = random.randint(0, 119)
+        roll_amount = int(0)  #  random.randint(0, 119)
         assert 0 <= roll_amount < 120
 
         # get the data
         x, y = self.the_data[idx]
-
-        # get a scale factor for the activity
-        scale_factor = random.uniform(0.5, 3.0)
 
         # Make a copy of the original x tensor
         rolled_x = x.clone().squeeze()
@@ -68,11 +75,22 @@ class SPECT_Dataset4(Dataset):
         rolled_portion = torch.roll(portion_to_roll, shifts=roll_amount, dims=0)
 
         # Replace the rolled portion in the copied tensor
-        rolled_x[slice_indices] = rolled_portion
+        rolled_x[slice_indices] = rolled_portion.unsqueeze(0)
 
-        # generate Poisson noise
-        #poisson_scale = 180_000 * scale_factor
+        # scale
+        if (not self.normalize_input) or (not self.normalize_label):
+            # get a scale factor for the activity
+            scale_factor = random.uniform(0.5, 3.0)
+            if not self.normalize_input:
+                rolled_x *= scale_factor
+            if not self.normalize_label:
+                y *= scale_factor
+
+        if self.add_noise:
+            # generate Poisson noise
+            #poisson_scale = 180_000 * scale_factor
+            rolled_x = torch.poisson(rolled_x)
 
         # return result
-        return torch.poisson(scale_factor * rolled_x.unsqueeze(0)), scale_factor * y
+        return  rolled_x, y
 

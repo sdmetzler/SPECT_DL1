@@ -88,7 +88,7 @@ def main(args):
     start_d_time = time.time()
     dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noiseless.proj',
                                             phantom_path, '.phantom', num_sets,
-                                            normalize_input=True, normalize_label=True)
+                                            normalize_input=True, normalize_label=True, add_noise=False)
     print(f"Dataset creating time: {time.time()-start_d_time} sec.")
 
     # put aside data for testing
@@ -137,6 +137,7 @@ def main(args):
 
     # loop over epochs to train
     best_validation = 1_000_000.
+    zeros = torch.zeros(25, 1, 256, 256, device=device)
     for ie in range(args.num_epochs):
         # print info
         print(f"Beginning epoch {ie}.")
@@ -149,9 +150,16 @@ def main(args):
         for batch, (X_train, y_train) in enumerate(train_loader):
             # print
             start_f_time = time.time()
+            print(f"X_train size: {X_train.shape}")
+            print(f"y_train size: {y_train.shape}")
             with autocast():  # Enables automatic mixed precision
-                y_pred = my_model.forward(X_train)
+                y_pred = my_model.forward(X_train.view(-1, 1, 256, 256))
+                print(f"y_pred size: {y_pred.shape}")
                 loss = criterion(y_pred, y_train)
+                loss2 = criterion(y_train, zeros)
+                print(f"Label loss compared to zeros is {loss2}.")
+                loss3 = criterion(y_pred, zeros)
+                print(f"Prediction loss compared to zeros is {loss3}.")
                 assert not torch.isnan(loss), "Training loss is NaN. Exiting."
                 train_loss += loss
             end_f_time = time.time()
@@ -185,7 +193,6 @@ def main(args):
         print(f"Avg. training loss is {train_loss}.")
         end_e_time = time.time()
         epoch_time = end_e_time - start_e_time
-        print(f"Total validation time is {end_v_time-start_v_time} sec.")
         print(f"Total train time: {epoch_time} sec.")
         print(f"\tTotal forward time: {time_f} sec.")
         print(f"\tTotal gradient time: {time_g} sec.")
@@ -197,6 +204,7 @@ def main(args):
         start_v_time = time.time()
         with torch.no_grad():
             for batch, (X_validate, y_validate) in enumerate(validate_loader):
+                X_validate = X_validate.view(-1, 1, 256, 256)
                 y_pred = my_model(X_validate)
                 loss = criterion(y_pred, y_validate)
                 assert not torch.isnan(loss), "Validation loss is NaN. Exiting."
@@ -259,7 +267,7 @@ def main(args):
     # save test data to disk
     with torch.no_grad():
         for batch, (X_test, y_test) in enumerate(test_loader):
-            y_pred = my_model(X_test)
+            y_pred = my_model(X_test.view(-1, 1, 256, 256))
             loss = criterion(y_pred, y_test)
             assert not torch.isnan(loss), "Test loss is NaN. Exiting."
             print(f"Loss on test data is {loss}.")

@@ -13,13 +13,15 @@ def read_float32_binary(file_name):
 
 
 class SPECT_Dataset4(Dataset):
-    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, normalize_input, normalize_label,
-                 add_noise):
+    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets, expansion, normalize_input, normalize_label, 
+            add_noise):
         self.input_prefix = input_prefix
         self.input_suffix = input_suffix
         self.label_prefix = label_prefix
         self.label_suffix = label_suffix
         self.num_sets = num_sets
+        self.expansion = expansion
+        assert 120 % expansion == 0, "Invalid expansion factor"
         self.normalize_input = normalize_input
         self.normalize_label = normalize_label
         self.add_noise = add_noise
@@ -48,21 +50,41 @@ class SPECT_Dataset4(Dataset):
                 label_data /= torch.max(label_data)
 
             # save it
-            self.the_data.append( (input_data, label_data) )
-
+            step = 120 // expansion
+            for roll in range(expansion):
+                self.the_data.append( (self.roll_image(input_data, roll * step), label_data) )
 
     def __len__(self):
-        return self.num_sets
+        return self.expansion * self.num_sets
 
-    def __getitem__(self, idx):
-        # the amount to roll the sinogram
-        roll_amount = int(0)  #  random.randint(0, 119)
+    def __getitem__(self, idx_in):
+        assert idx_in < len(self.the_data), f"Requested index {idx_in} is not less that length {len(self.the_data)}."
+        x, y = self.the_data[idx_in]
+
+        # scale
+        """
+        This is commented out for now until the data is fixed. For now,
+        I won't normalize.
+        if (not self.normalize_input) or (not self.normalize_label):
+            # get a scale factor for the activity
+            scale_factor = random.uniform(0.5, 3.0)
+            if not self.normalize_input:
+                x *= scale_factor
+            if not self.normalize_label:
+                y *= scale_factor
+        """
+ 
+        if self.add_noise:
+            # generate Poisson noise
+            #poisson_scale = 180_000 * scale_factor
+            x = torch.poisson(x)
+
+        # return result
+        return x, y
+ 
+
+    def roll_image(self, x, roll_amount):
         assert 0 <= roll_amount < 120
-
-        # get the data
-        x, y = self.the_data[idx]
-
-        # Make a copy of the original x tensor
         rolled_x = x.clone().squeeze()
 
         # Specify the portion of the tensor you want to roll
@@ -75,22 +97,8 @@ class SPECT_Dataset4(Dataset):
         rolled_portion = torch.roll(portion_to_roll, shifts=roll_amount, dims=0)
 
         # Replace the rolled portion in the copied tensor
-        rolled_x[slice_indices] = rolled_portion.unsqueeze(0)
-
-        # scale
-        if (not self.normalize_input) or (not self.normalize_label):
-            # get a scale factor for the activity
-            scale_factor = random.uniform(0.5, 3.0)
-            if not self.normalize_input:
-                rolled_x *= scale_factor
-            if not self.normalize_label:
-                y *= scale_factor
-
-        if self.add_noise:
-            # generate Poisson noise
-            #poisson_scale = 180_000 * scale_factor
-            rolled_x = torch.poisson(rolled_x)
+        rolled_x[slice_indices] = rolled_portion
 
         # return result
-        return  rolled_x, y
+        return  rolled_x.unsqueeze(0)
 

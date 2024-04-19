@@ -88,7 +88,7 @@ def main(args):
     start_d_time = time.time()
     dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noiseless.proj',
                                             phantom_path, '.phantom', num_sets,
-                                            normalize_input=True, normalize_label=True, add_noise=False)
+                                            normalize_input=False, normalize_label=False, add_noise=False)
     print(f"Dataset creating time: {time.time()-start_d_time} sec.")
 
     # put aside data for testing
@@ -213,7 +213,7 @@ def main(args):
                 if ie+1 == args.num_epochs and batch == 0 and args.write_tar:
                     fname_x = spect_path + args.write_tar + '_x.tar'
                     fname_y = spect_path + args.write_tar + '_y.tar'
-                    fname_p = spect_path + args.write_tar + '_pred.tar'
+                    fname_p = spect_path + args.write_tar + '_p.tar'
                     if args.verbose:
                         print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
                     torch.save(X_validate, fname_x)

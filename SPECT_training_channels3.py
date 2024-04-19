@@ -86,25 +86,37 @@ def main(args):
     # load the data
     # Create custom dataset instance
     start_d_time = time.time()
-    dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noiseless.proj',
-                                            phantom_path, '.phantom', num_sets,
-                                            normalize_input=False, normalize_label=False, add_noise=False)
+    dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noisy.proj',
+                                            phantom_path, '.phantom', num_sets, 10, 
+                                            normalize_input=False, normalize_label=False,
+                                            add_noise=False)
     print(f"Dataset creating time: {time.time()-start_d_time} sec.")
 
     # put aside data for testing
     train_batch_size = args.batch_size
     validate_batch_size = args.batch_size
-    development_size = int(0.9 * num_sets)
-    test_size = num_sets - development_size
-    train_size = (development_size * 7) // 9
+    """
+    development_size = int(0.8 * num_sets * args.expansion)
+    test_size = num_sets * args.expansion - development_size
+    train_size = (development_size * 4) // 5
     validate_size = development_size - train_size
-    development_dataset, test_dataset = random_split(dataset, [development_size, test_size])
+    development_dataset, testing_dataset = random_split(dataset, [development_size, test_size])
     train_dataset, validate_dataset = random_split(development_dataset, [train_size, validate_size])
+    """
+    development_size = int(num_sets*10)
+    train_size = (development_size * 4) // 5
+    validate_size = development_size - train_size
+    #development_dataset, testing_dataset = random_split(dataset, [development_size, test_size])
+    train_dataset, validate_dataset = random_split(dataset, [train_size, validate_size])
 
     # Create data loader
+    num_workers = 2  #multiprocessing.cpu_count()
+    if args.verbose:
+        print(f"Creating data loaders with {num_workers} workers.")
+    #train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
+    #validate_loader = DataLoader(validate_dataset, batch_size=validate_batch_size, shuffle=True, num_workers=num_workers)
     train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
     validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True)
-    test_loader = CustomDataLoader.CustomDataLoader(dataset=test_dataset, batch_size=test_size, shuffle=False)
 
     # create the model
     my_model = SPECT_Model_channelized2.SPECT_Model_channelized2(args.channelize, args.go_to_2x2, args.go_to_1x1)
@@ -137,7 +149,6 @@ def main(args):
 
     # loop over epochs to train
     best_validation = 1_000_000.
-    zeros = torch.zeros(25, 1, 256, 256, device=device)
     for ie in range(args.num_epochs):
         # print info
         print(f"Beginning epoch {ie}.")
@@ -150,16 +161,9 @@ def main(args):
         for batch, (X_train, y_train) in enumerate(train_loader):
             # print
             start_f_time = time.time()
-            print(f"X_train size: {X_train.shape}")
-            print(f"y_train size: {y_train.shape}")
             with autocast():  # Enables automatic mixed precision
-                y_pred = my_model.forward(X_train.view(-1, 1, 256, 256))
-                print(f"y_pred size: {y_pred.shape}")
+                y_pred = my_model.forward(X_train)
                 loss = criterion(y_pred, y_train)
-                loss2 = criterion(y_train, zeros)
-                print(f"Label loss compared to zeros is {loss2}.")
-                loss3 = criterion(y_pred, zeros)
-                print(f"Prediction loss compared to zeros is {loss3}.")
                 assert not torch.isnan(loss), "Training loss is NaN. Exiting."
                 train_loss += loss
             end_f_time = time.time()
@@ -204,7 +208,6 @@ def main(args):
         start_v_time = time.time()
         with torch.no_grad():
             for batch, (X_validate, y_validate) in enumerate(validate_loader):
-                X_validate = X_validate.view(-1, 1, 256, 256)
                 y_pred = my_model(X_validate)
                 loss = criterion(y_pred, y_validate)
                 assert not torch.isnan(loss), "Validation loss is NaN. Exiting."
@@ -216,6 +219,7 @@ def main(args):
                     fname_p = spect_path + args.write_tar + '_p.tar'
                     if args.verbose:
                         print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
+                        print(f"Shapes are {X_validate.shape}, {y_validate.shape}, and {y_pred.shape}")
                     torch.save(X_validate, fname_x)
                     torch.save(y_validate, fname_y)
                     torch.save(y_pred, fname_p)
@@ -264,23 +268,6 @@ def main(args):
     train_time = time.time()
     print(f"Total training time: {train_time - start_time} seconds.")
 
-    # save test data to disk
-    with torch.no_grad():
-        for batch, (X_test, y_test) in enumerate(test_loader):
-            y_pred = my_model(X_test.view(-1, 1, 256, 256))
-            loss = criterion(y_pred, y_test)
-            assert not torch.isnan(loss), "Test loss is NaN. Exiting."
-            print(f"Loss on test data is {loss}.")
-
-            fname_x = spect_path + args.write_tar + '_x.tar'
-            fname_y = spect_path + args.write_tar + '_y.tar'
-            fname_p = spect_path + args.write_tar + '_pred.tar'
-            if args.verbose:
-                print(f"Writing test to files {fname_x}, {fname_y}, and {fname_p}.")
-            torch.save(X_test, fname_x)
-            torch.save(y_test, fname_y)
-            torch.save(y_pred, fname_p)
-
     # Stop recording memory snapshot history.
     if args.memory_management and use_gpu:
         torch.cuda.memory._record_memory_history(enabled=None)
@@ -297,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--channelize', action='store_true', help='Channelize the result.')
     parser.add_argument('-1', '--go_to_1x1', action='store_true', help='use layers to get down to 1x1')
     parser.add_argument('-2', '--go_to_2x2', action='store_true', help='use layers to get down to 1x1')
-    parser.add_argument('-s', '--seed', type=int, default=7, help='seed for random-number generator')
+    parser.add_argument('-s', '--seed', type=int, default=17, help='seed for random-number generator')
     parser.add_argument('-n', '--num_epochs', type=int, default=500, help='number of epochs to run')
     parser.add_argument('-b', '--batch_size', type=int, default=10, help='number of samples per batch')
     parser.add_argument('-l', '--learning_rate', type=float, default=0.01, help='learning rate')

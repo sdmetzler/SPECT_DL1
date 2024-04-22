@@ -17,9 +17,28 @@ import torch.multiprocessing as mp
 import multiprocessing
 import gc
 import time
+import random
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
+
+def randomly_split_sets(n_sets, s1, s2, s3):
+    if n_sets != s1 + s2 + s3:
+        raise ValueError("Total number of sets must equal to the sum of s1, s2, and s3.")
+
+    # Create a list containing numbers from 0 to n_sets - 1
+    all_sets = list(range(n_sets))
+
+    # Shuffle the list to randomize the order of sets
+    random.shuffle(all_sets)
+
+    # Split the shuffled list into mutually exclusive sets of sizes s1, s2, and s3
+    set1 = all_sets[:s1]
+    set2 = all_sets[s1:s1+s2]
+    set3 = all_sets[s1+s2:s1+s2+s3]
+    assert len(set1) + len(set2) + len(set3) == n_sets
+
+    return set1, set2, set3
 
 def main(args):
     use_gpu = torch.cuda.is_available()
@@ -118,6 +137,7 @@ def main(args):
     #validate_loader = DataLoader(validate_dataset, batch_size=validate_batch_size, shuffle=True, num_workers=num_workers)
     train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
     validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True)
+    test_loader = validate_loader
 
     # create the model
     my_model = SPECT_Model_channelized2.SPECT_Model_channelized2(args.channelize, args.go_to_2x2, args.go_to_1x1)
@@ -202,7 +222,6 @@ def main(args):
         print(f"\tTotal forward time: {time_f} sec.")
         print(f"\tTotal gradient time: {time_g} sec.")
         print(f"\tTotal other time: {epoch_time - time_f - time_g} sec.")
-        #print(f"\tCummulative get_time: {SPECT_Dataset3.get_time()} sec.")
 
         # Validate
         validate_loss = 0.
@@ -213,17 +232,6 @@ def main(args):
                 loss = criterion(y_pred, y_validate)
                 assert not torch.isnan(loss), "Validation loss is NaN. Exiting."
                 validate_loss += loss
-
-                if ie+1 == args.num_epochs and batch == 0 and args.write_tar:
-                    fname_x = spect_path + args.write_tar + '_x.tar'
-                    fname_y = spect_path + args.write_tar + '_y.tar'
-                    fname_p = spect_path + args.write_tar + '_p.tar'
-                    if args.verbose:
-                        print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
-                        print(f"Shapes are {X_validate.shape}, {y_validate.shape}, and {y_pred.shape}")
-                    torch.save(X_validate, fname_x)
-                    torch.save(y_validate, fname_y)
-                    torch.save(y_pred, fname_p)
 
             # get averages
             validate_loss /= (batch + 1)
@@ -269,6 +277,32 @@ def main(args):
     train_time = time.time()
     print(f"Total training time: {train_time - start_time} seconds.")
 
+    # Test
+    test_loss = 0.
+    start_test_time = time.time()
+    with torch.no_grad():
+        for batch, (X_test, y_test) in enumerate(test_loader):
+            y_pred = my_model(X_test)
+            loss = criterion(y_pred, y_test)
+            assert not torch.isnan(loss), "Test loss is NaN. Exiting."
+            test_loss += loss
+
+            fname_x = spect_path + args.write_tar + '_x.tar'
+            fname_y = spect_path + args.write_tar + '_y.tar'
+            fname_p = spect_path + args.write_tar + '_p.tar'
+            if args.verbose:
+                print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
+                print(f"Shapes are {X_validate.shape}, {y_validate.shape}, and {y_pred.shape}")
+            torch.save(X_test, fname_x)
+            torch.save(y_test, fname_y)
+            torch.save(y_pred, fname_p)
+
+        # get averages
+        test_loss /= (batch + 1)
+        end_test_time = time.time()
+        print(f"Avg. test loss is {test_loss}.")
+        print(f"There were {batch+1} test batches.")
+
     # Stop recording memory snapshot history.
     if args.memory_management and use_gpu:
         torch.cuda.memory._record_memory_history(enabled=None)
@@ -288,6 +322,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--seed', type=int, default=17, help='seed for random-number generator')
     parser.add_argument('-n', '--num_epochs', type=int, default=500, help='number of epochs to run')
     parser.add_argument('-b', '--batch_size', type=int, default=10, help='number of samples per batch')
+    parser.add_argument('-e', '--expansion', type=int, default=1, help='data size expansion using sinogram rotation')
     parser.add_argument('-l', '--learning_rate', type=float, default=0.01, help='learning rate')
     parser.add_argument('-r', '--reload', type=str, default=None, help='Current model to reload.')
     parser.add_argument('-o', '--output', type=str, default='channelized_model.tar', help='Output name')
@@ -306,6 +341,9 @@ if __name__ == "__main__":
     if args.batch_size <= 0:
         parse_error = True
         print(f"Batch size must be positive.")
+    if args.expansion<= 0:
+        parse_error = True
+        print(f"Expansion size must be positive.")
     if parse_error:
         print("Exiting due to parsing errors.")
         sys.exit(1)

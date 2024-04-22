@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torch.cuda.amp import GradScaler, autocast
 import os
-import SPECT_Dataset4
+import SPECT_Dataset5
 import CustomDataLoader
 import SPECT_Model_channelized2
 import numpy as np
@@ -86,10 +86,11 @@ def main(args):
     # load the data
     # Create custom dataset instance
     start_d_time = time.time()
-    dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noiseless.proj',
-                                            phantom_path, '.phantom', num_sets, 10, 
+    dataset = SPECT_Dataset5.SPECT_Dataset5(proj_path, '.atten.noiseless.proj',
+                                            phantom_path, '.phantom', num_sets, 
                                             normalize_input=False, normalize_label=False,
                                             add_noise=False)
+    dataset.expand_data(10)
     print(f"Dataset creating time: {time.time()-start_d_time} sec.")
 
     # put aside data for testing

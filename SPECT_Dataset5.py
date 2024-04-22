@@ -69,13 +69,14 @@ class SPECT_Dataset5(Dataset):
 
     def __getitem__(self, idx_in):
         index = idx_in % self.num_sets
+        assert 0 <= index <= self.num_sets
         x, y = self.the_data[index]
 
         if idx_in >= self.num_sets:
             step = 120 // self.expansion
-            roll = step * (idx_in//self.num_sets)
-            assert roll >= step
-            x = self.roll_image(x.clone(), roll)
+            roll_index = idx_in//self.num_sets
+            assert 1 <= roll_index < self.expansion
+            x = self.roll_image(x.clone(), roll_index * step)
 
             
 

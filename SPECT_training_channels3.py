@@ -86,7 +86,7 @@ def main(args):
     # load the data
     # Create custom dataset instance
     start_d_time = time.time()
-    dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noisy.proj',
+    dataset = SPECT_Dataset4.SPECT_Dataset4(proj_path, '.atten.noiseless.proj',
                                             phantom_path, '.phantom', num_sets, 10, 
                                             normalize_input=False, normalize_label=False,
                                             add_noise=False)

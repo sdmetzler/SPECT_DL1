@@ -264,7 +264,7 @@ def main(args):
         validate_loss = 0.
         start_v_time = time.time()
         with torch.no_grad():
-            for batch, (X_validate, y_validate) in enumerate(validate_loader):
+            for batch, (X_validate, y_validate) in enumerate(validate_loader_new):
                 y_pred = my_model(X_validate)
                 loss = criterion(y_pred, y_validate)
                 assert not torch.isnan(loss), "Validation loss is NaN. Exiting."

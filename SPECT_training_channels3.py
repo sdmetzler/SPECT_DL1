@@ -120,24 +120,62 @@ def main(args):
     test_size = num_sets * args.expansion - development_size
     train_size = (development_size * 4) // 5
     validate_size = development_size - train_size
-    development_dataset, testing_dataset = random_split(dataset, [development_size, test_size])
-    train_dataset, validate_dataset = random_split(development_dataset, [train_size, validate_size])
-    """
-    development_size = int(num_sets*10)
-    train_size = (development_size * 4) // 5
-    validate_size = development_size - train_size
-    #development_dataset, testing_dataset = random_split(dataset, [development_size, test_size])
+    development_dataset, testing_dataset = random_split(dataset, [development_size, test_size]) 
+    train_dataset, validate_dataset = random_split(development_dataset, [train_size, validate_size]) 
+    """ 
+    development_size = int(num_sets*10) 
+    train_size = (development_size * 4) // 5 
+    validate_size = development_size - train_size 
+    #development_dataset, testing_dataset = random_split(dataset, [development_size, test_size]) 
     train_dataset, validate_dataset = random_split(dataset, [train_size, validate_size])
+    train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True) 
+    validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True) 
+    test_loader = validate_loader 
+
+    # New code
+    train_size_new = (num_sets * 7) // 10 
+    validate_size_new = (num_sets * 2) // 10
+    test_size_new = num_sets - train_size_new - validate_size_new
+    assert test_size_new > 0
+    train_set, validate_set, test_set = randomly_split_sets(num_sets, train_size_new, validate_size_new, test_size_new)
+
+    # load the data
+    # Create custom datasets
+    start_d_time = time.time()
+    proj_type = '.atten.noiseless.proj'
+    train_dataset_new = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
+                                                  phantom_path, '.phantom', train_set,
+                                                  normalize_input=False, normalize_label=False,
+                                                  add_noise=False)
+    assert train_dataset_new.__len__() == train_size_new
+    validate_dataset_new = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
+                                                     phantom_path, '.phantom', validate_set,
+                                                     normalize_input=False, normalize_label=False,
+                                                     add_noise=False)
+    assert validate_dataset_new.__len__() == validate_size_new
+    test_dataset_new = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
+                                                 phantom_path, '.phantom', test_set,
+                                                 normalize_input=False, normalize_label=False,
+                                                 add_noise=False)
+    assert test_dataset_new.__len__() == test_size_new
+    end_d_time = time.time()
+    print(f"Dataset creating time: {end_d_time-start_d_time} sec.")
+
+    # expand sets
+    train_dataset_new.expand_data(args.expansion)
+    assert train_dataset_new.__len__() == train_size_new * args.expansion
+    validate_dataset_new.expand_data(args.expansion)
+    assert validate_dataset_new.__len__() == validate_size_new * args.expansion
+    test_dataset_new.expand_data(args.expansion)
+    assert test_dataset_new.__len__() == test_size_new * args.expansion
+    end_de_time = time.time()
+    print(f"Dataset was expanded by a factor of {args.expansion}.")
+    print(f"Dataset expansion time: {end_de_time-end_d_time} sec.")
 
     # Create data loader
-    num_workers = 2  #multiprocessing.cpu_count()
-    if args.verbose:
-        print(f"Creating data loaders with {num_workers} workers.")
-    #train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, num_workers=num_workers)
-    #validate_loader = DataLoader(validate_dataset, batch_size=validate_batch_size, shuffle=True, num_workers=num_workers)
-    train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
-    validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True)
-    test_loader = validate_loader
+    train_loader_new = CustomDataLoader.CustomDataLoader(dataset=train_dataset_new, batch_size=train_batch_size, shuffle=True)
+    validate_loader_new = CustomDataLoader.CustomDataLoader(dataset=validate_dataset_new, batch_size=validate_batch_size, shuffle=True)
+    test_loader_new = CustomDataLoader.CustomDataLoader(dataset=test_dataset_new, batch_size=test_size_new, shuffle=True)
 
     # create the model
     my_model = SPECT_Model_channelized2.SPECT_Model_channelized2(args.channelize, args.go_to_2x2, args.go_to_1x1)

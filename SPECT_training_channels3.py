@@ -216,7 +216,7 @@ def main(args):
         time_g = 0
         train_loss = 0
         start_e_time = time.time()
-        for batch, (X_train, y_train) in enumerate(train_loader):
+        for batch, (X_train, y_train) in enumerate(train_loader_new):
             # print
             start_f_time = time.time()
             with autocast():  # Enables automatic mixed precision

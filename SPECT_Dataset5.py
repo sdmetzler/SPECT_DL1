@@ -13,18 +13,17 @@ def read_float32_binary(file_name):
 
 
 class SPECT_Dataset5(Dataset):
-    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets_or_list, normalize_input, normalize_label, 
-            add_noise):
+    def __init__(self, input_prefix, input_suffix, label_prefix, label_suffix, num_sets_or_list, normalize_input, add_noise):
         self.input_prefix = input_prefix
         self.input_suffix = input_suffix
         self.label_prefix = label_prefix
         self.label_suffix = label_suffix
         self.normalize_input = normalize_input
-        self.normalize_label = normalize_label
         self.add_noise = add_noise
         self.expansion = 1
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.the_data = []
+        self.norm_max = 0
 
         if isinstance(num_sets_or_list, int):
             self.num_sets = num_sets_or_list
@@ -52,10 +51,7 @@ class SPECT_Dataset5(Dataset):
 
             # normalize as needed
             if self.normalize_input:
-                input_data /= torch.max(input_data)
-
-            if self.normalize_label:
-                label_data /= torch.max(label_data)
+                self.norm_max = max( torch.max(input_data), self.norm_max)
 
             # save it
             self.the_data.append( (input_data, label_data) )
@@ -72,32 +68,38 @@ class SPECT_Dataset5(Dataset):
         assert 0 <= index <= self.num_sets
         x, y = self.the_data[index]
 
+        # roll if necessary; x is cloned in this block
         if idx_in >= self.num_sets:
             step = 120 // self.expansion
             roll_index = idx_in//self.num_sets
             assert 1 <= roll_index < self.expansion
-            x = self.roll_image(x.clone(), roll_index * step)
+            x = self.roll_image(x, roll_index * step)
+        else:
+            # roll_image will clone
+            x = x.clone()
 
-            
+        # clone y so it can be modified
+        y = y.clone()
 
-        # scale
-        """
-        This is commented out for now until the data is fixed. For now,
-        I won't normalize.
-        if (not self.normalize_input) or (not self.normalize_label):
+        # normalize
+        if self.normalize_input:
+            # add noise before normalizing
+            if self.add_noise:
+                x = torch.poisson(x)
+
+            assert self.norm_max > 0
+            x /= self.norm_max
+            y /= self.norm_max
+        else:
             # get a scale factor for the activity
             scale_factor = random.uniform(0.5, 3.0)
-            if not self.normalize_input:
-                x *= scale_factor
-            if not self.normalize_label:
-                y *= scale_factor
-        """
- 
-        if self.add_noise:
-            # generate Poisson noise
-            #poisson_scale = 180_000 * scale_factor
-            x = torch.poisson(x)
+            x *= scale_factor
+            y *= scale_factor
 
+            # add noise after scaling
+            if self.add_noise:
+                x = torch.poisson(x)
+ 
         # return result
         return x, y
  

@@ -22,7 +22,7 @@ module load python  # ... or any appropriate modules
 module load anaconda3_gpu/23.9.0
 module list  # job documentation and metadata
 echo "job is starting on `hostname`"
-srun python3 /projects/bcps/smetzler/SPECT_DL1/SPECT_training_channels3.py -v -n 500 -s 17 -b 25 -o Models/channelized_model_4x4.tar -t Models/validate_4x4
+srun python3 -u /projects/bcps/smetzler/SPECT_DL1/SPECT_training_channels3.py -v -n 200 -s 7 -e 4 -b 24000 -l 0.01 -o Models/channelized_model_4x4.tar
 ##-r Models/channelized_model_4x4_best.tar
 
 

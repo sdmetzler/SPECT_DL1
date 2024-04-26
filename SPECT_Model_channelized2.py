@@ -348,10 +348,19 @@ class SPECT_Model_channelized2(nn.Module):
             print("Unable to find channelization state during reload. Assuming true.")
         go_to_2x2 = checkpoint['go_to_2x2']
         go_to_1x1 = checkpoint['go_to_1x1']
+        if self.go_to_2x2 != go_to_2x2:
+            print(f"Parameter 'go_to_2x2' from disk does not match current. current = {self.go_to_2x2}.")
+        if self.go_to_1x1 != go_to_1x1:
+            print(f"Parameter 'go_to_1x1' from disk does not match current. current = {self.go_to_1x1}.")
 
         # create the new
-        new_model = SPECT_Model_channelized2(channelized, go_to_2x2, go_to_1x1)
-        new_model.load_state_dict(checkpoint['state_dict'])
+        new_model = SPECT_Model_channelized2(channelized, self.go_to_2x2, self.go_to_1x1)
+        try:
+            new_model.load_state_dict(checkpoint['state_dict'])
+        except Exception as e:
+            print("Exception occurred during model initialization:", e)
+            print("Will try to continue.")
+
 
         # return
         return new_model

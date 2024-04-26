@@ -19,6 +19,9 @@ import gc
 import time
 import random
 
+# settings
+num_sets = 2000
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters())
 
@@ -73,9 +76,6 @@ def main(args):
     phantom_path = spect_path + "TrainData/Phantoms/"
     print(f"Data path is {spect_path}.")
 
-    # settings
-    num_sets = 250
-
     # print some more verbose information
     output_path = spect_path + args.output
     if args.verbose:
@@ -102,69 +102,43 @@ def main(args):
     # set a random seed for reproducibility
     torch.manual_seed(args.seed)
 
-    # load the data
-    # Create custom dataset instance
-    start_d_time = time.time()
-    dataset = SPECT_Dataset5.SPECT_Dataset5(proj_path, '.atten.noiseless.proj',
-                                            phantom_path, '.phantom', num_sets, 
-                                            normalize_input=False, normalize_label=False,
-                                            add_noise=False)
-    dataset.expand_data(10)
-    print(f"Dataset creating time: {time.time()-start_d_time} sec.")
-
     # put aside data for testing
-    train_batch_size = args.batch_size
-    validate_batch_size = args.batch_size
-    """
-    development_size = int(0.8 * num_sets * args.expansion)
-    test_size = num_sets * args.expansion - development_size
-    train_size = (development_size * 4) // 5
-    validate_size = development_size - train_size
-    development_dataset, testing_dataset = random_split(dataset, [development_size, test_size]) 
-    train_dataset, validate_dataset = random_split(development_dataset, [train_size, validate_size]) 
-    """ 
-    development_size = int(num_sets*10) 
-    train_size = (development_size * 4) // 5 
-    validate_size = development_size - train_size 
-    #development_dataset, testing_dataset = random_split(dataset, [development_size, test_size]) 
-    train_dataset, validate_dataset = random_split(dataset, [train_size, validate_size])
-    train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True) 
-    validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True) 
+    train_size = (num_sets * 4) // 5 
+    validate_size = num_sets // 5
+    test_size = num_sets - train_size - validate_size
+    # for now test_size is set to zero; num_sets is also set to 2000. This way I reserve
+    # the last 500 for testing.
+    assert test_size >= 0
+    train_set, validate_set, test_set = randomly_split_sets(num_sets, train_size, validate_size, test_size)
 
-    # New code
-    train_size_new = (num_sets * 7) // 10 
-    validate_size_new = (num_sets * 2) // 10
-    test_size = num_sets - train_size_new - validate_size_new
-    assert test_size > 0
-    train_set, validate_set, test_set = randomly_split_sets(num_sets, train_size_new, validate_size_new, test_size)
+    # set the batch sizes
+    train_batch_size = args.batch_size if args.batch_size < train_size else train_size
+    validate_batch_size = args.batch_size if args.batch_size < validate_size else validate_size
 
     # load the data
     # Create custom datasets
     start_d_time = time.time()
     proj_type = '.atten.noiseless.proj'
-    train_dataset_new = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
+    train_dataset = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
                                                   phantom_path, '.phantom', train_set,
-                                                  normalize_input=False, normalize_label=False,
-                                                  add_noise=False)
-    assert train_dataset_new.__len__() == train_size_new
-    validate_dataset_new = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
+                                                  normalize_input=True, add_noise=False)
+    assert train_dataset.__len__() == train_size
+    validate_dataset = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
                                                      phantom_path, '.phantom', validate_set,
-                                                     normalize_input=False, normalize_label=False,
-                                                     add_noise=False)
-    assert validate_dataset_new.__len__() == validate_size_new
+                                                     normalize_input=True, add_noise=False)
+    assert validate_dataset.__len__() == validate_size
     test_dataset = SPECT_Dataset5.SPECT_Dataset5(proj_path, proj_type,
                                                  phantom_path, '.phantom', test_set,
-                                                 normalize_input=False, normalize_label=False,
-                                                 add_noise=False)
+                                                 normalize_input=True, add_noise=False)
     assert test_dataset.__len__() == test_size
     end_d_time = time.time()
     print(f"Dataset creating time: {end_d_time-start_d_time} sec.")
 
     # expand sets
-    train_dataset_new.expand_data(args.expansion)
-    assert train_dataset_new.__len__() == train_size_new * args.expansion
-    validate_dataset_new.expand_data(args.expansion)
-    assert validate_dataset_new.__len__() == validate_size_new * args.expansion
+    train_dataset.expand_data(args.expansion)
+    assert train_dataset.__len__() == train_size * args.expansion
+    validate_dataset.expand_data(args.expansion)
+    assert validate_dataset.__len__() == validate_size * args.expansion
     test_dataset.expand_data(args.expansion)
     assert test_dataset.__len__() == test_size * args.expansion
     end_de_time = time.time()
@@ -172,9 +146,10 @@ def main(args):
     print(f"Dataset expansion time: {end_de_time-end_d_time} sec.")
 
     # Create data loader
-    train_loader_new = CustomDataLoader.CustomDataLoader(dataset=train_dataset_new, batch_size=train_batch_size, shuffle=True)
-    validate_loader_new = CustomDataLoader.CustomDataLoader(dataset=validate_dataset_new, batch_size=validate_batch_size, shuffle=True)
-    test_loader = CustomDataLoader.CustomDataLoader(dataset=test_dataset, batch_size=test_size * args.expansion, shuffle=True)
+    train_loader = CustomDataLoader.CustomDataLoader(dataset=train_dataset, batch_size=train_batch_size, shuffle=True)
+    validate_loader = CustomDataLoader.CustomDataLoader(dataset=validate_dataset, batch_size=validate_batch_size, shuffle=True)
+    test_batch_size = min(test_size * args.expansion, validate_batch_size)
+    test_loader = CustomDataLoader.CustomDataLoader(dataset=test_dataset, batch_size=test_batch_size, shuffle=True)
 
     # create the model
     my_model = SPECT_Model_channelized2.SPECT_Model_channelized2(args.channelize, args.go_to_2x2, args.go_to_1x1)
@@ -216,7 +191,7 @@ def main(args):
         time_g = 0
         train_loss = 0
         start_e_time = time.time()
-        for batch, (X_train, y_train) in enumerate(train_loader_new):
+        for batch, (X_train, y_train) in enumerate(train_loader):
             # print
             start_f_time = time.time()
             with autocast():  # Enables automatic mixed precision
@@ -264,7 +239,7 @@ def main(args):
         validate_loss = 0.
         start_v_time = time.time()
         with torch.no_grad():
-            for batch, (X_validate, y_validate) in enumerate(validate_loader_new):
+            for batch, (X_validate, y_validate) in enumerate(validate_loader):
                 y_pred = my_model(X_validate)
                 loss = criterion(y_pred, y_validate)
                 assert not torch.isnan(loss), "Validation loss is NaN. Exiting."
@@ -324,21 +299,26 @@ def main(args):
             assert not torch.isnan(loss), "Test loss is NaN. Exiting."
             test_loss += loss
 
-            fname_x = spect_path + args.write_tar + '_x.tar'
-            fname_y = spect_path + args.write_tar + '_y.tar'
-            fname_p = spect_path + args.write_tar + '_p.tar'
-            if args.verbose:
-                print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
-                print(f"Shapes are {X_validate.shape}, {y_validate.shape}, and {y_pred.shape}")
-            torch.save(X_test, fname_x)
-            torch.save(y_test, fname_y)
-            torch.save(y_pred, fname_p)
+            if args.write_tar:
+                fname_x = spect_path + args.write_tar + '_x.tar'
+                fname_y = spect_path + args.write_tar + '_y.tar'
+                fname_p = spect_path + args.write_tar + '_p.tar'
+                if args.verbose:
+                    print(f"Writing validation to files {fname_x}, {fname_y}, and {fname_p}.")
+                    print(f"Shapes are {X_validate.shape}, {y_validate.shape}, and {y_pred.shape}")
+                torch.save(X_test, fname_x)
+                torch.save(y_test, fname_y)
+                torch.save(y_pred, fname_p)
 
         # get averages
         test_loss /= (batch + 1)
         end_test_time = time.time()
         print(f"Avg. test loss is {test_loss}.")
         print(f"There were {batch+1} test batches.")
+
+    # if not writing files, store indices
+    if not args.write_tar:
+        print(f"Test set is: {test_set}")
 
     # Stop recording memory snapshot history.
     if args.memory_management and use_gpu:
@@ -358,7 +338,7 @@ if __name__ == "__main__":
     parser.add_argument('-2', '--go_to_2x2', action='store_true', help='use layers to get down to 1x1')
     parser.add_argument('-s', '--seed', type=int, default=17, help='seed for random-number generator')
     parser.add_argument('-n', '--num_epochs', type=int, default=500, help='number of epochs to run')
-    parser.add_argument('-b', '--batch_size', type=int, default=10, help='number of samples per batch')
+    parser.add_argument('-b', '--batch_size', type=int, default=int(num_sets*4)//25, help='number of samples per batch')
     parser.add_argument('-e', '--expansion', type=int, default=1, help='data size expansion using sinogram rotation')
     parser.add_argument('-l', '--learning_rate', type=float, default=0.01, help='learning rate')
     parser.add_argument('-r', '--reload', type=str, default=None, help='Current model to reload.')

@@ -51,10 +51,10 @@ class SPECT_Dataset5(Dataset):
 
             # normalize as needed
             if self.normalize_input:
-                self.norm_max = max( torch.max(input_data), self.norm_max)
+                self.norm_max = max(torch.max(input_data), self.norm_max)
 
             # save it
-            self.the_data.append( (input_data, label_data) )
+            self.the_data.append((input_data, label_data))
 
         # print normalization
         if self.normalize_input:

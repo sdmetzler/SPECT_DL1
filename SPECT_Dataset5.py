@@ -56,6 +56,10 @@ class SPECT_Dataset5(Dataset):
             # save it
             self.the_data.append( (input_data, label_data) )
 
+        # print normalization
+        if self.normalize_input:
+            print(f"Normalization factor: divide by {self.norm_max}.")
+
     def expand_data(self, expansion):
         assert 120 % expansion == 0, f"Invalid expansion: {expansion}."
         self.expansion = expansion
@@ -92,9 +96,9 @@ class SPECT_Dataset5(Dataset):
             y /= self.norm_max
         else:
             # get a scale factor for the activity
-            scale_factor = random.uniform(0.5, 3.0)
-            x *= scale_factor
-            y *= scale_factor
+            #scale_factor = random.uniform(0.5, 3.0)
+            #x *= scale_factor
+            #y *= scale_factor
 
             # add noise after scaling
             if self.add_noise:

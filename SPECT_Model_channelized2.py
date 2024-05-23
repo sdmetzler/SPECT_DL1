@@ -335,7 +335,7 @@ class SPECT_Model_channelized2(nn.Module):
         checkpoint = torch.load(filename) 
         self.load_state_dict(checkpoint['state_dict'])
 
-    def load_and_replace(self, filename, device):  #, device):
+    def load_and_replace(self, filename, device): 
         """
         This loads the model, checks model-dependent variables, and then fills the model
         """
